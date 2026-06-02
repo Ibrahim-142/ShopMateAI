@@ -3,13 +3,14 @@ import api from "../api/axios.js";
 import ChatInput from "./ChatInput";
 import ChatMessage from "./ChatMessage";
 import { useCart } from "../contexts/CartContext/useCart";
+import { useAuth } from "../contexts/AuthContext/useAuth";
 
 const Chatbot = ({ onClose }) => {
-  // ✅ Load saved messages on startup
-  const [messages, setMessages] = useState(() => {
-    const savedMessages = localStorage.getItem("chatMessages");
-    return savedMessages ? JSON.parse(savedMessages) : [];
-  });
+  const { user } = useAuth();
+  const userId = user?.id;
+
+  // ✅ Initialize with empty array, load per user below
+  const [messages, setMessages] = useState([]);
 
   const [isTyping, setIsTyping] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
@@ -17,23 +18,36 @@ const Chatbot = ({ onClose }) => {
   const { fetchCart } = useCart();
   const endRef = useRef(null);
 
+  // ✅ Load saved messages for this user
+  useEffect(() => {
+    if (!userId) {
+      setMessages([]);
+      return;
+    }
+    const savedMessages = localStorage.getItem(`chatMessages_${userId}`);
+    setMessages(savedMessages ? JSON.parse(savedMessages) : []);
+  }, [userId]);
+
   // Auto scroll
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "auto" });
   }, [messages, isTyping]);
 
-  // ✅ Save messages whenever they change
+  // ✅ Save messages whenever they change (per user)
   useEffect(() => {
+    if (!userId) return;
     localStorage.setItem(
-      "chatMessages",
+      `chatMessages_${userId}`,
       JSON.stringify(messages)
     );
-  }, [messages]);
+  }, [messages, userId]);
 
-  // ✅ Optional clear chat button
+  // ✅ Optional clear chat button (for this user only)
   const clearChat = () => {
     setMessages([]);
-    localStorage.removeItem("chatMessages");
+    if (userId) {
+      localStorage.removeItem(`chatMessages_${userId}`);
+    }
   };
 
   const addMessage = async (msg) => {
