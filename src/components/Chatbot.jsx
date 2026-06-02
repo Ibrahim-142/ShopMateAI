@@ -1,10 +1,16 @@
 import { useState, useRef, useEffect } from "react";
+import api from "../api/axios.js";
 import ChatInput from "./ChatInput";
 import ChatMessage from "./ChatMessage";
 import { useCart } from "../contexts/CartContext/useCart";
-import api from "../api/axios.js";
+
 const Chatbot = ({ onClose }) => {
-  const [messages, setMessages] = useState([]);
+  // ✅ Load saved messages on startup
+  const [messages, setMessages] = useState(() => {
+    const savedMessages = localStorage.getItem("chatMessages");
+    return savedMessages ? JSON.parse(savedMessages) : [];
+  });
+
   const [isTyping, setIsTyping] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
 
@@ -16,6 +22,20 @@ const Chatbot = ({ onClose }) => {
     endRef.current?.scrollIntoView({ behavior: "auto" });
   }, [messages, isTyping]);
 
+  // ✅ Save messages whenever they change
+  useEffect(() => {
+    localStorage.setItem(
+      "chatMessages",
+      JSON.stringify(messages)
+    );
+  }, [messages]);
+
+  // ✅ Optional clear chat button
+  const clearChat = () => {
+    setMessages([]);
+    localStorage.removeItem("chatMessages");
+  };
+
   const addMessage = async (msg) => {
     setMessages((prev) => [...prev, msg]);
     setSuggestions([]);
@@ -23,29 +43,28 @@ const Chatbot = ({ onClose }) => {
 
     try {
       const res = await api.post(
-        "/api/chatbot",
+        "/api/chatbot/message",
         { message: msg.message },
         { withCredentials: true }
       );
 
       const data = res.data;
 
-      // BOT MESSAGE
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "robot",
-          message: data.message,
-          products: data.data || [],
-        },
-      ]);
+      const botMessage = {
+        sender: "robot",
+        message: data.reply,
+        products: data.products || [],
+      };
 
-      // ✅ CART SYNC (Option B)
-      if (data.message?.includes("added to cart")) {
+      setMessages((prev) => [...prev, botMessage]);
+
+      // Sync cart if chatbot performed cart action
+      if (
+        data.reply?.toLowerCase().includes("cart")
+      ) {
         fetchCart();
       }
 
-      // SUGGESTIONS
       setSuggestions(data.suggestions || []);
     } catch (err) {
       console.log(err);
@@ -54,7 +73,8 @@ const Chatbot = ({ onClose }) => {
         ...prev,
         {
           sender: "robot",
-          message: "Something went wrong. Please try again.",
+          message:
+            "Something went wrong. Please try again.",
         },
       ]);
     } finally {
@@ -64,19 +84,27 @@ const Chatbot = ({ onClose }) => {
 
   return (
     <div className="w-80 h-100 bg-white rounded-2xl shadow-xl flex flex-col overflow-hidden">
-      
       {/* HEADER */}
-      <div className="flex justify-between items-center px-4 py-3">
+      <div className="flex justify-between items-center px-4 py-3 border-b">
         <span className="text-sm font-medium text-gray-700">
           Assistant
         </span>
 
-        <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-gray-600 cursor-pointer"
-        >
-          ✕
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={clearChat}
+            className="text-xs text-red-500 hover:text-red-700"
+          >
+            Clear
+          </button>
+
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       {/* MESSAGES */}
@@ -102,12 +130,15 @@ const Chatbot = ({ onClose }) => {
 
       {/* SUGGESTIONS */}
       {suggestions.length > 0 && (
-        <div className="flex gap-2 px-2 py-1  bg-white">
+        <div className="flex gap-2 px-2 py-1 bg-white overflow-x-auto">
           {suggestions.map((s, i) => (
             <button
               key={i}
               onClick={() =>
-                addMessage({ sender: "user", message: s })
+                addMessage({
+                  sender: "user",
+                  message: s,
+                })
               }
               className="px-3 py-1 text-xs bg-gray-100 rounded-full whitespace-nowrap hover:bg-gray-200"
             >
@@ -118,7 +149,7 @@ const Chatbot = ({ onClose }) => {
       )}
 
       {/* INPUT */}
-      <div className="px-2 py-2">
+      <div className="px-2 py-2 border-t">
         <ChatInput addMessage={addMessage} />
       </div>
     </div>
